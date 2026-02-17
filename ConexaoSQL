@@ -1,0 +1,114 @@
+package javaapplication5;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Properties;
+
+public class ConexaoSQL {
+    
+    // Configurações padrão para MySQL Workbench
+    private static final String DEFAULT_URL = "jdbc:mysql://127.0.0.1:3306/";
+    private static final String DEFAULT_DATABASE = "mydb";
+    private static final String DEFAULT_USER = "root";
+    private static final String DEFAULT_PASSWORD = "22072004Lya@";
+    
+    private static String url;
+    private static String database;
+    private static String user;
+    private static String password;
+
+    // Inicialização estática
+    static {
+        try {
+            // Carregar driver
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            
+            // Configurar parâmetros (pode ser customizado depois)
+            url = DEFAULT_URL;
+            database = DEFAULT_DATABASE;
+            user = DEFAULT_USER;
+            password = DEFAULT_PASSWORD;
+            
+            System.out.println("✅ Driver MySQL carregado com sucesso!");
+            
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("❌ Driver MySQL não encontrado!", e);
+        }
+    }
+
+    public static Connection getConnection() {
+        return getConnection(database, user, password);
+    }
+    
+    public static Connection getConnection(String databaseName, String username, String userPassword) {
+        try {
+            String connectionUrl = url + databaseName + "?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true";
+            
+            Properties properties = new Properties();
+            properties.setProperty("user", username);
+            properties.setProperty("password", userPassword);
+            properties.setProperty("characterEncoding", "UTF-8");
+            properties.setProperty("useUnicode", "true");
+            
+            System.out.println("🔗 Conectando à: " + connectionUrl);
+            Connection connection = DriverManager.getConnection(connectionUrl, properties);
+            System.out.println("✅ Conexão estabelecida com: " + databaseName);
+            
+            return connection;
+            
+        } catch (SQLException ex) {
+            System.err.println("❌ Erro de conexão: " + ex.getMessage());
+            System.err.println("💡 Dica: Crie o banco no Workbench: CREATE DATABASE IF NOT EXISTS " + databaseName + ";");
+            throw new RuntimeException("Falha na conexão com o banco", ex);
+        }
+    }
+    
+    // Métodos para configurar conexão (opcionais)
+    public static void setDatabase(String dbName) {
+        database = dbName;
+    }
+    
+    public static void setCredentials(String username, String userPassword) {
+        user = username;
+        password = userPassword;
+    }
+    
+    // Teste rápido
+    public static void main(String[] args) {
+        try (Connection conn = getConnection()) {
+            System.out.println("🎉 Conexão funcionando perfeitamente!");
+        } catch (SQLException e) {
+            System.err.println("💥 Erro: " + e.getMessage());
+        }
+    }
+}
+
+public class Imagem {
+    private int idimagens; // ✅ Nome padronizado
+    private int imagensCOD;
+    private byte[] dadoImagem;
+
+    // Getters e Setters
+    public int getIdimagens() {
+        return idimagens;
+    }
+    public void setIdimagens(int idimagens) {
+        this.idimagens = idimagens;
+    }
+
+    public int getImagensCOD() {
+        return imagensCOD;
+    }
+    public void setImagensCOD(int imagensCOD) {
+        this.imagensCOD = imagensCOD;
+    }
+
+    public byte[] getDadoImagem() {
+        return dadoImagem;
+    }
+    public void setDadoImagem(byte[] dadoImagem) {
+        this.dadoImagem = dadoImagem;
+    }
+}
+
