@@ -1,0 +1,534 @@
+package javaapplication5; // Mantenha o seu pacote
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList; 
+import java.util.List;
+import java.awt.image.BufferedImage;
+import javax.swing.border.LineBorder;
+
+public class TelaOrdenacao extends JFrame {
+
+    // --- Componentes de Interface ---
+    private JTextField txtId, txtImagensCOD;
+    private JButton btnSalvar, btnEditar, btnExcluir, btnSelecionarImagem;
+    private JButton btnBubbleSort, btnSelectionSort, btnInsertionSort, btnResetOrdenacao;
+    private JTable tabela;
+    private JLabel lblImagemSelecionada, lblTempoOrdenacao;
+    private JLabel lblPreview;
+
+    // --- Componentes de Busca ---
+    private JTextField txtBuscarId;
+    private JButton btnBuscarId, btnLimparBusca;
+
+    // --- Dados ---
+    private byte[] imagemBytes; // Apenas para imagem selecionada (nova ou editada)
+    private List<Imagem> listaOriginal; // Lista principal (agora leve, sem BLOBs)
+
+    public TelaOrdenacao() {
+        setTitle("Sistema de Gerenciamento de Imagens - Com Ordenação e Edição");
+        setSize(1100, 700); // Aumentado para acomodar o novo layout
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        setLayout(null);
+
+        initComponents();
+        atualizarTabela(); // Carrega a lista leve
+    }
+
+    private void initComponents() {
+        // --- SEÇÃO 1: TABELA (Agora no topo) ---
+        DefaultTableModel modelo = new DefaultTableModel(
+                new Object[][]{},
+                // REMOVIDA A COLUNA "Imagem" - agora só ID e Código
+                new String[]{"ID", "Código"}
+        );
+
+        tabela = new JTable(modelo);
+        tabela.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tabela.setDefaultEditor(Object.class, null);
+        tabela.setRowHeight(40); // Altura reduzida já que não tem mais imagem
+        
+        // Configurar larguras das colunas
+        tabela.getColumnModel().getColumn(0).setPreferredWidth(150); // ID maior
+        tabela.getColumnModel().getColumn(1).setPreferredWidth(300); // Código ainda maior
+        
+        tabela.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                preencherCamposEExibirImagem();
+            }
+        });
+
+        JScrollPane scroll = new JScrollPane(tabela);
+        scroll.setBounds(20, 20, 1050, 300); // Tabela no topo
+        add(scroll);
+
+        // ==========================================================
+        // --- NOVA ORGANIZAÇÃO: BUSCA -> CRUD -> CAMPOS ---
+        // ==========================================================
+
+        // --- SEÇÃO 2: BUSCA POR ID (AGORA EM PRIMEIRO LUGAR) ---
+        int yBusca = 340; // Posição Y abaixo da tabela
+
+        JLabel lblBuscarId = new JLabel("Buscar por ID:");
+        lblBuscarId.setBounds(20, yBusca, 90, 25);
+        lblBuscarId.setFont(new Font("Arial", Font.BOLD, 12));
+        add(lblBuscarId);
+        
+        txtBuscarId = new JTextField();
+        txtBuscarId.setBounds(110, yBusca, 100, 25);
+        add(txtBuscarId);
+        
+        btnBuscarId = new JButton("Buscar");
+        btnBuscarId.setBounds(220, yBusca, 90, 25);
+        btnBuscarId.setBackground(new Color(0, 100, 0));
+        btnBuscarId.setForeground(Color.WHITE);
+        btnBuscarId.addActionListener(e -> buscarPorId());
+        add(btnBuscarId);
+        
+        btnLimparBusca = new JButton("Limpar Busca");
+        btnLimparBusca.setBounds(320, yBusca, 130, 25);
+        btnLimparBusca.setBackground(new Color(128, 0, 128));
+        btnLimparBusca.setForeground(Color.WHITE);
+        btnLimparBusca.addActionListener(e -> resetOrdenacao()); 
+        add(btnLimparBusca);
+
+        // --- SEÇÃO 3: BOTÕES DO CRUD (AGORA EM SEGUNDO LUGAR) ---
+        int yBotoesCrud = 375; // 35 pixels abaixo da busca
+
+        btnSalvar = new JButton("Criar Novo");
+        btnSalvar.setBounds(20, yBotoesCrud, 110, 35);
+        btnSalvar.setBackground(new Color(34, 139, 34));
+        btnSalvar.setForeground(Color.WHITE);
+        btnSalvar.setFont(new Font("Arial", Font.BOLD, 12));
+        btnSalvar.addActionListener(e -> salvar());
+        add(btnSalvar);
+
+        btnEditar = new JButton("Salvar Edição");
+        btnEditar.setBounds(140, yBotoesCrud, 120, 35);
+        btnEditar.setBackground(new Color(70, 130, 180));
+        btnEditar.setForeground(Color.WHITE);
+        btnEditar.setFont(new Font("Arial", Font.BOLD, 12));
+        btnEditar.addActionListener(e -> editar());
+        add(btnEditar);
+
+        btnExcluir = new JButton("Excluir");
+        btnExcluir.setBounds(270, yBotoesCrud, 100, 35);
+        btnExcluir.setBackground(Color.RED);
+        btnExcluir.setForeground(Color.WHITE);
+        btnExcluir.setFont(new Font("Arial", Font.BOLD, 12));
+        btnExcluir.addActionListener(e -> excluir());
+        add(btnExcluir);
+
+        // --- SEÇÃO 4: CAMPOS DE CADASTRO (AGORA EM TERCEIRO LUGAR) ---
+        int yCampos = 420; // 45 pixels abaixo do CRUD
+
+        JLabel lblId = new JLabel("ID:");
+        lblId.setBounds(20, yCampos, 30, 25);
+        add(lblId);
+
+        txtId = new JTextField();
+        txtId.setBounds(50, yCampos, 50, 25);
+        txtId.setEditable(false);
+        txtId.setBackground(Color.LIGHT_GRAY);
+        add(txtId);
+
+        JLabel lblImagensCOD = new JLabel("Código da Imagem:");
+        lblImagensCOD.setBounds(110, yCampos, 120, 25);
+        add(lblImagensCOD);
+
+        txtImagensCOD = new JTextField();
+        txtImagensCOD.setBounds(230, yCampos, 100, 25);
+        add(txtImagensCOD);
+
+        btnSelecionarImagem = new JButton("Selecionar Imagem");
+        btnSelecionarImagem.setBounds(340, yCampos, 150, 25);
+        btnSelecionarImagem.addActionListener(e -> selecionarImagem());
+        add(btnSelecionarImagem);
+
+        lblImagemSelecionada = new JLabel("Nenhuma imagem selecionada");
+        lblImagemSelecionada.setBounds(500, yCampos, 250, 25);
+        add(lblImagemSelecionada);
+
+        // --- PREVIEW AUMENTADO (AGORA MAIOR E MAIS VISÍVEL) ---
+        lblPreview = new JLabel("Preview", SwingConstants.CENTER);
+        lblPreview.setBounds(760, yCampos, 300, 200); // Aumentado significativamente
+        lblPreview.setBorder(new LineBorder(Color.GRAY, 2));
+        lblPreview.setHorizontalTextPosition(SwingConstants.CENTER);
+        lblPreview.setVerticalTextPosition(SwingConstants.CENTER);
+        lblPreview.setFont(new Font("Arial", Font.BOLD, 14));
+        add(lblPreview);
+
+        // ==========================================================
+        // --- SEÇÃO 5: BOTÕES DE ORDENAÇÃO ---
+        // ==========================================================
+        
+        int yBotoesSort = 470; // 50 pixels abaixo dos campos
+
+        JLabel lblOrdenacao = new JLabel("Ordenar por Código:");
+        lblOrdenacao.setBounds(20, yBotoesSort, 150, 25);
+        lblOrdenacao.setFont(new Font("Arial", Font.BOLD, 12));
+        add(lblOrdenacao);
+
+        btnBubbleSort = new JButton("Bubble Sort");
+        btnBubbleSort.setBounds(150, yBotoesSort, 120, 25);
+        btnBubbleSort.setBackground(new Color(70, 130, 180));
+        btnBubbleSort.setForeground(Color.WHITE);
+        btnBubbleSort.addActionListener(e -> ordenarBubbleSort());
+        add(btnBubbleSort);
+
+        btnSelectionSort = new JButton("Selection Sort");
+        btnSelectionSort.setBounds(280, yBotoesSort, 120, 25);
+        btnSelectionSort.setBackground(new Color(34, 139, 34));
+        btnSelectionSort.setForeground(Color.WHITE);
+        btnSelectionSort.addActionListener(e -> ordenarSelectionSort());
+        add(btnSelectionSort);
+
+        btnInsertionSort = new JButton("Insertion Sort");
+        btnInsertionSort.setBounds(410, yBotoesSort, 120, 25);
+        btnInsertionSort.setBackground(new Color(165, 42, 42));
+        btnInsertionSort.setForeground(Color.WHITE);
+        btnInsertionSort.addActionListener(e -> ordenarInsertionSort());
+        add(btnInsertionSort);
+
+        btnResetOrdenacao = new JButton("Reset Ordenação");
+        btnResetOrdenacao.setBounds(540, yBotoesSort, 140, 25);
+        btnResetOrdenacao.setBackground(new Color(128, 0, 128));
+        btnResetOrdenacao.setForeground(Color.WHITE);
+        btnResetOrdenacao.addActionListener(e -> resetOrdenacao());
+        add(btnResetOrdenacao);
+
+        // --- LABEL DO TEMPO DE ORDENAÇÃO ---
+        int yTempoOrdenacao = 505; // 35 pixels abaixo dos botões de ordenação
+
+        lblTempoOrdenacao = new JLabel("Tempo de ordenação: --");
+        lblTempoOrdenacao.setBounds(20, yTempoOrdenacao, 300, 25);
+        lblTempoOrdenacao.setForeground(Color.BLUE);
+        lblTempoOrdenacao.setFont(new Font("Arial", Font.BOLD, 12));
+        add(lblTempoOrdenacao);
+    }
+    
+    // ==========================================================
+    // --- MÉTODOS DE LÓGICA (CRUD, ORDENAÇÃO, ETC.) ---
+    // ==========================================================
+
+    /**
+     * MÉTODO PREENCHER CAMPOS E EXIBIR IMAGEM (NOVO)
+     * Agora preenche os campos E busca a imagem do banco para exibir no preview
+     */
+    private void preencherCamposEExibirImagem() {
+        int linha = tabela.getSelectedRow();
+        if (linha != -1) {
+            try {
+                int idSelecionado = (int) tabela.getValueAt(linha, 0);
+                int codigoSelecionado = (int) tabela.getValueAt(linha, 1);
+                
+                // Preenche os campos
+                txtId.setText(String.valueOf(idSelecionado));
+                txtImagensCOD.setText(String.valueOf(codigoSelecionado));
+                imagemBytes = null; // Reseta para nova seleção
+                lblImagemSelecionada.setText("Imagem do banco - ID: " + idSelecionado);
+                
+                // Busca a imagem do banco para exibir no preview
+                ImagemDAO dao = new ImagemDAO();
+                byte[] dadosDaImagem = dao.getImagemBytesById(idSelecionado);
+                
+                if (dadosDaImagem != null && dadosDaImagem.length > 0) {
+                    // Cria thumbnail para o preview (agora maior)
+                    ImageIcon previewIcon = criarThumbnail(dadosDaImagem, lblPreview.getWidth(), lblPreview.getHeight());
+                    lblPreview.setIcon(previewIcon);
+                    lblPreview.setText(null); // Remove o texto "Preview"
+                } else {
+                    // Se não há imagem, mostra placeholder
+                    lblPreview.setIcon(null);
+                    lblPreview.setText("Sem Imagem");
+                    lblPreview.setForeground(Color.RED);
+                }
+                
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, 
+                    "Erro ao carregar imagem: " + ex.getMessage(),
+                    "Erro", JOptionPane.ERROR_MESSAGE);
+                lblPreview.setIcon(null);
+                lblPreview.setText("Erro ao carregar");
+                lblPreview.setForeground(Color.RED);
+            }
+        }
+    }
+
+    /**
+     * MÉTODO AUXILIAR PARA CRIAR THUMBNAILS
+     * (Agora usado para criar o preview quando seleciona item da tabela)
+     */
+    private ImageIcon criarThumbnail(byte[] dados, int largura, int altura) {
+        if (dados == null || dados.length == 0) {
+            BufferedImage img = new BufferedImage(largura, altura, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = img.createGraphics();
+            g.setColor(Color.LIGHT_GRAY);
+            g.fillRect(0, 0, largura, altura);
+            g.setColor(Color.DARK_GRAY);
+            g.drawString("X", largura / 2 - 4, altura / 2 + 4);
+            g.dispose();
+            return new ImageIcon(img);
+        }
+
+        try {
+            ImageIcon iconOriginal = new ImageIcon(dados);
+            if (iconOriginal.getIconWidth() <= 0) {
+                throw new IOException("Dados de imagem inválidos (formato não suportado?)");
+            }
+            Image imgOriginal = iconOriginal.getImage();
+            
+            // Calcula as dimensões mantendo a proporção
+            int originalWidth = iconOriginal.getIconWidth();
+            int originalHeight = iconOriginal.getIconHeight();
+            
+            // Calcula o scaling para caber no preview
+            double widthScale = (double) largura / originalWidth;
+            double heightScale = (double) altura / originalHeight;
+            double scale = Math.min(widthScale, heightScale);
+            
+            int scaledWidth = (int) (originalWidth * scale);
+            int scaledHeight = (int) (originalHeight * scale);
+            
+            Image imgRedimensionada = imgOriginal.getScaledInstance(scaledWidth, scaledHeight, Image.SCALE_SMOOTH);
+            return new ImageIcon(imgRedimensionada);
+            
+        } catch (Exception e) {
+            System.err.println("Erro ao criar thumbnail: " + e.getMessage());
+            return criarThumbnail(null, largura, altura);
+        }
+    }
+
+    // MÉTODO SELECIONAR IMAGEM (Sem alteração)
+    private void selecionarImagem() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+                "Imagens", "jpg", "jpeg", "png", "gif", "bmp", "webp"));
+        
+        int result = fileChooser.showOpenDialog(this);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+            try {
+                imagemBytes = Files.readAllBytes(file.toPath());
+                lblImagemSelecionada.setText(file.getName() + " (" + imagemBytes.length + " bytes)");
+                
+                ImageIcon previewIcon = criarThumbnail(imagemBytes, lblPreview.getWidth(), lblPreview.getHeight());
+                lblPreview.setIcon(previewIcon);
+                lblPreview.setText(null);
+                
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this, "Erro ao ler a imagem: " + ex.getMessage());
+            }
+        }
+    }
+
+    // MÉTODO SALVAR (Sem alteração)
+    private void salvar() {
+        if (imagemBytes == null) {
+            JOptionPane.showMessageDialog(this, "Selecione uma imagem primeiro!");
+            return;
+        }
+        try {
+            Imagem img = new Imagem();
+            ImagemDAO dao = new ImagemDAO();
+            img.setImagensCOD(Integer.parseInt(txtImagensCOD.getText()));
+            img.setDadoImagem(imagemBytes);
+            dao.create(img);
+            
+            atualizarTabela(); // Atualiza a lista leve
+            limparCampos();
+            JOptionPane.showMessageDialog(this, "Nova imagem criada com sucesso!");
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Código da imagem deve ser um número!");
+        }
+    }
+
+    /**
+     * ✅ MÉTODO EDITAR (ATUALIZADO PARA LAZY LOADING)
+     * Agora busca os bytes do banco se nenhuma nova imagem for selecionada.
+     */
+    private void editar() {
+        int linha = tabela.getSelectedRow();
+        if (linha == -1) {
+            JOptionPane.showMessageDialog(this, "Selecione uma imagem para editar.");
+            return;
+        }
+        try {
+            Imagem img = new Imagem();
+            ImagemDAO dao = new ImagemDAO();
+            int id = Integer.parseInt(txtId.getText());
+            int novoCodigo = Integer.parseInt(txtImagensCOD.getText());
+            img.setIdimagens(id);
+            img.setImagensCOD(novoCodigo);
+            
+            if (imagemBytes != null) {
+                // Se o usuário selecionou uma nova imagem (bytes), use-a
+                img.setDadoImagem(imagemBytes);
+            } else {
+                // *** MUDANÇA PRINCIPAL ***
+                // Se o usuário NÃO selecionou uma nova imagem,
+                // buscamos os bytes originais DO BANCO (Lazy Loading).
+                // A 'listaOriginal' não tem mais os bytes.
+                img.setDadoImagem(dao.getImagemBytesById(id));
+            }
+            dao.update(img);
+            
+            atualizarTabela(); // Atualiza a lista leve
+            limparCampos();
+            JOptionPane.showMessageDialog(this, "Imagem ID " + id + " atualizada com sucesso!");
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Código da imagem deve ser um número!");
+        }
+    }
+
+    // MÉTODO EXCLUIR (Sem alteração)
+    private void excluir() {
+        int linha = tabela.getSelectedRow();
+        if (linha == -1) {
+            JOptionPane.showMessageDialog(this, "Selecione uma imagem para excluir.");
+            return;
+        }
+        try {
+            int id = Integer.parseInt(txtId.getText());
+            ImagemDAO dao = new ImagemDAO();
+            if (!dao.existeId(id)) {
+                JOptionPane.showMessageDialog(this, "ID " + id + " não encontrado!", "ID Não Encontrado", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int confirm = JOptionPane.showConfirmDialog(this, "Tem certeza?", "Confirmar Exclusão", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                Imagem img = new Imagem();
+                img.setIdimagens(id);
+                dao.delete(img);
+                
+                atualizarTabela(); // Atualiza a lista leve
+                limparCampos();
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "ID inválido.", "Erro", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * MÉTODO ATUALIZAR TABELA (Principal)
+     * Agora carrega a lista LEVE (só ID e Código) do DAO.
+     */
+    private void atualizarTabela() {
+        ImagemDAO dao = new ImagemDAO();
+        // 1. Carrega a lista LEVE (sem BLOBs)
+        List<Imagem> lista = dao.read();
+        // 2. Guarda a referência para ordenação
+        this.listaOriginal = lista;
+        // 3. Popula a tabela (agora só com ID e Código)
+        atualizarTabelaComLista(lista);
+        // Limpa a busca e o tempo
+        txtBuscarId.setText("");
+        lblTempoOrdenacao.setText("Tempo de ordenação: --");
+    }
+    
+    /**
+     * MÉTODO ATUALIZAR TABELA COM LISTA (Renderizador)
+     * ATUALIZADO: Agora só adiciona ID e Código, sem a coluna de imagem
+     */
+    private void atualizarTabelaComLista(List<Imagem> lista) {
+        DefaultTableModel modelo = (DefaultTableModel) tabela.getModel();
+        modelo.setRowCount(0);
+
+        for (Imagem img : lista) {
+            // Agora só adiciona ID e Código, sem a coluna de imagem
+            modelo.addRow(new Object[]{
+                img.getIdimagens(),
+                img.getImagensCOD()
+            });
+        }
+    }
+
+    // --- MÉTODOS DE ORDENAÇÃO (Sem alteração, funcionam com a lista leve) ---
+    
+    private void ordenarBubbleSort() {
+        if (listaOriginal == null || listaOriginal.isEmpty()) { return; }
+        long tempo = ClasseOrdenacoes.bubbleSort(this.listaOriginal);
+        atualizarTabelaComLista(this.listaOriginal);
+        lblTempoOrdenacao.setText("Bubble Sort: " + tempo + " ms");
+    }
+
+    private void ordenarSelectionSort() {
+        if (listaOriginal == null || listaOriginal.isEmpty()) { return; }
+        long tempo = ClasseOrdenacoes.selectionSort(this.listaOriginal);
+        atualizarTabelaComLista(this.listaOriginal);
+        lblTempoOrdenacao.setText("Selection Sort: " + tempo + " ms");
+    }
+
+    private void ordenarInsertionSort() {
+        if (listaOriginal == null || listaOriginal.isEmpty()) { return; }
+        long tempo = ClasseOrdenacoes.insertionSort(this.listaOriginal);
+        atualizarTabelaComLista(this.listaOriginal);
+        lblTempoOrdenacao.setText("Insertion Sort: " + tempo + " ms");
+    }
+
+    // MÉTODO RESETAR (Sem alteração)
+    private void resetOrdenacao() {
+        atualizarTabela(); 
+    }
+    
+    // --- MÉTODOS DE BUSCA (Sem alteração, funcionam com a lista leve) ---
+    
+    private void buscarPorId() {
+        String idTexto = txtBuscarId.getText();
+        if (idTexto.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Digite um ID para buscar.");
+            return;
+        }
+        
+        try {
+            int idBuscado = Integer.parseInt(idTexto);
+            List<Imagem> resultadosBusca = new ArrayList<>();
+            
+            if (listaOriginal != null) {
+                for (Imagem img : listaOriginal) {
+                    if (img.getIdimagens() == idBuscado) {
+                        resultadosBusca.add(img);
+                        break; 
+                    }
+                }
+            }
+            
+            if (resultadosBusca.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "ID " + idBuscado + " não encontrado.");
+                ((DefaultTableModel) tabela.getModel()).setRowCount(0);
+            } else {
+                atualizarTabelaComLista(resultadosBusca);
+                lblTempoOrdenacao.setText("Exibindo ID: " + idBuscado);
+            }
+            
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "ID inválido. Digite apenas números.");
+        }
+    }
+    
+    // MÉTODO LIMPAR CAMPOS (Atualizado para limpar também o preview)
+    private void limparCampos() {
+        txtId.setText("");
+        txtImagensCOD.setText("");
+        lblImagemSelecionada.setText("Nenhuma imagem selecionada");
+        imagemBytes = null;
+        tabela.clearSelection();
+        lblPreview.setIcon(null);
+        lblPreview.setText("Preview");
+        lblPreview.setForeground(Color.BLACK);
+    }
+
+    // MÉTODO MAIN (Sem alteração)
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            System.out.println("=== INICIANDO SISTEMA DE IMAGENS ===");
+            new TelaOrdenacao().setVisible(true);
+        });
+    }
+}
