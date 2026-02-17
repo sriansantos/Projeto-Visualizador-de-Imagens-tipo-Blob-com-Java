@@ -1,0 +1,174 @@
+package subir.as.imagens.no.banco;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+public class SUBIRASIMAGENSNOBANCO {
+
+    // =================================================================================
+    // --- CONFIGURE AQUI ---
+    // (Preencha os 4 campos abaixo)
+    // =================================================================================
+
+    // 1. DADOS DE CONEXÃO (MySQL)
+    // ATENÇÃO: Altere "SEU_BANCO_DE_DADOS" para o nome do seu banco
+    private static final String DB_URL = "jdbc:mysql://127.0.0.1:3306/mydb";
+    private static final String DB_USER = "root";
+    private static final String DB_PASSWORD = "22072004Lya@";
+
+    // 2. PASTA DAS IMAGENS
+    // ATENÇÃO: Use barras normais (/) ou barras duplas invertidas (\\) no Windows.
+    private static final String PASTA_DE_IMAGENS = "C:\\Users\\Usuario\\Desktop\\APS";
+
+    // 3. INFORMAÇÕES DA TABELA (JÁ CONFIGURADO COM BASE NO SEU SCRIPT)
+    private static final String NOME_DA_TABELA = "imagens";
+    private static final String NOME_COLUNA_ID = "idimagens";
+    private static final String NOME_COLUNA_BLOB = "dado_imagem";
+
+    // =================================================================================
+    // --- FIM DA CONFIGURAÇÃO ---
+    // =================================================================================
+
+
+    public static void main(String[] args) {
+        
+        // SQLs gerados com base na sua configuração
+        String sqlSelectIds = String.format("SELECT %s FROM %s ORDER BY %s", NOME_COLUNA_ID, NOME_DA_TABELA, NOME_COLUNA_ID);
+        String sqlUpdateBlob = String.format("UPDATE %s SET %s = ? WHERE %s = ?", NOME_DA_TABELA, NOME_COLUNA_BLOB, NOME_COLUNA_ID);
+
+        try {
+            // Passo 1: Carregar todas as imagens da pasta
+            System.out.println("Procurando imagens em: " + PASTA_DE_IMAGENS);
+            List<Path> imagens = carregarCaminhosDeImagem(PASTA_DE_IMAGENS);
+            if (imagens.isEmpty()) {
+                System.err.println("Nenhuma imagem encontrada na pasta. Abortando.");
+                return;
+            }
+            System.out.printf("Total de %d imagens encontradas.\n", imagens.size());
+
+            // Passo 2: Conectar ao banco e buscar todos os IDs
+            System.out.println("Conectando ao banco de dados...");
+            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+                
+                System.out.println("Buscando IDs da tabela: " + NOME_DA_TABELA);
+                List<Long> ids = buscarTodosIds(conn, sqlSelectIds);
+                if (ids.isEmpty()) {
+                    System.err.println("Nenhum ID encontrado na tabela. Abortando.");
+                    return;
+                }
+                System.out.printf("Total de %d IDs encontrados.\n", ids.size());
+
+                // Passo 3: Embaralhar a lista de imagens
+                Collections.shuffle(imagens);
+                System.out.println("Imagens embaralhadas com sucesso.");
+
+                // Passo 4: Iterar pelos IDs e atualizar com uma imagem aleatória
+                System.out.println("Iniciando atualização do banco de dados...");
+                
+                try (PreparedStatement stmtUpdate = conn.prepareStatement(sqlUpdateBlob)) {
+                    
+                    for (int i = 0; i < ids.size(); i++) {
+                        long idAtual = ids.get(i);
+                        
+                        // Pega uma imagem da lista embaralhada
+                        // Usa o operador de módulo (%) para repetir as imagens
+                        // se houver menos imagens do que IDs.
+                        Path imagemAleatoria = imagens.get(i % imagens.size());
+
+                        try {
+                            // Atualiza o banco
+                            atualizarImagemNoBanco(stmtUpdate, idAtual, imagemAleatoria);
+                            System.out.printf("  -> ID %d atualizado com a imagem '%s'\n", idAtual, imagemAleatoria.getFileName());
+
+                        } catch (IOException e) {
+                            System.err.printf("ERRO ao ler o arquivo %s: %s\n", imagemAleatoria.getFileName(), e.getMessage());
+                        } catch (SQLException e) {
+                            System.err.printf("ERRO ao atualizar o ID %d: %s\n", idAtual, e.getMessage());
+                        }
+                    }
+                }
+                System.out.println("Processo de atualização concluído!");
+
+            } catch (SQLException e) {
+                System.err.println("Falha na conexão ou operação com o banco de dados: " + e.getMessage());
+                e.printStackTrace();
+            }
+
+        } catch (IOException e) {
+            System.err.println("Erro ao ler a pasta de imagens: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Busca todos os arquivos de imagem (jpg, png, gif) no diretório especificado.
+     */
+    private static List<Path> carregarCaminhosDeImagem(String folderPath) throws IOException {
+        try (Stream<Path> paths = Files.walk(Paths.get(folderPath))) {
+            return paths
+                .filter(Files::isRegularFile)
+                .filter(SUBIRASIMAGENSNOBANCO::isImageFile)
+                .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * Busca todos os IDs da tabela e retorna uma Lista.
+     */
+    private static List<Long> buscarTodosIds(Connection conn, String sqlSelectIds) throws SQLException {
+        List<Long> ids = new ArrayList<>();
+        // Usamos "getLong" pois o ID pode ser grande, funciona para int também.
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sqlSelectIds)) {
+            
+            while (rs.next()) {
+                ids.add(rs.getLong(1)); 
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Atualiza um único registro no banco com os dados da imagem.
+     */
+    private static void atualizarImagemNoBanco(PreparedStatement stmt, long id, Path imagePath) throws SQLException, IOException {
+        
+        try (InputStream inputStream = Files.newInputStream(imagePath)) {
+            
+            // 1º parâmetro (?): Define os dados da imagem (BLOB) para 'dado_imagem'
+            stmt.setBinaryStream(1, inputStream);
+            
+            // 2º parâmetro (?): Define o ID (WHERE) para 'idimagens'
+            stmt.setLong(2, id);
+
+            // Executa a atualização
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Verifica se um arquivo é uma imagem com base na extensão.
+     */
+    private static boolean isImageFile(Path path) {
+        String fileName = path.getFileName().toString().toLowerCase();
+        return fileName.endsWith(".jpg") || 
+               fileName.endsWith(".jpeg") || 
+               fileName.endsWith(".png") ||
+               fileName.endsWith(".gif") ||
+               fileName.endsWith(".bmp");
+    }
+}
