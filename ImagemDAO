@@ -1,0 +1,160 @@
+package javaapplication5; 
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import javax.swing.JOptionPane;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+public class ImagemDAO {
+
+    public void create(Imagem img) {
+        Connection con = ConexaoSQL.getConnection();
+        PreparedStatement stmt = null;
+
+        try {
+            stmt = con.prepareStatement("INSERT INTO imagens (imagensCOD, dado_imagem) VALUES (?, ?)");
+            stmt.setInt(1, img.getImagensCOD());
+            stmt.setBytes(2, img.getDadoImagem());
+            stmt.executeUpdate();
+            JOptionPane.showMessageDialog(null, "Imagem cadastrada com sucesso!");
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(null, "Erro ao salvar: " + ex.getMessage());
+        } finally {
+            fecharRecursos(con, stmt, null);
+        }
+    }
+
+    /**
+     * ✅ OTIMIZAÇÃO DE LAZY LOADING (CARREGAMENTO SOB DEMANDA)
+     * Este método agora carrega APENAS os metadados (ID e Código).
+     * O MEDIUMBLOB (dado_imagem) NÃO é carregado.
+     * Isso resolve o erro 'Java heap space'.
+     */
+    public List<Imagem> read() {
+        Connection con = ConexaoSQL.getConnection();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        List<Imagem> lista = new ArrayList<>();
+
+        // *** MUDANÇA PRINCIPAL: O SQL NÃO BUSCA MAIS O BLOB (*) ***
+        String sql = "SELECT idimagens, imagensCOD FROM imagens ORDER BY idimagens";
+        
+        try {
+            stmt = con.prepareStatement(sql);
+            rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                Imagem img = new Imagem();
+                
+                img.setIdimagens(rs.getInt("idimagens"));
+                img.setImagensCOD(rs.getInt("imagensCOD"));
+                
+                // *** A LINHA "setDadoImagem" FOI REMOVIDA ***
+                // O 'dadoImagem' do objeto 'img' permanecerá null.
+                
+                lista.add(img);
+            }
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(null, "Erro ao ler: " + ex.getMessage());
+            ex.printStackTrace();
+        } finally {
+            fecharRecursos(con, stmt, rs);
+        }
+        return lista;
+    }
+
+    public void update(Imagem img) {
+        Connection con = ConexaoSQL.getConnection();
+        PreparedStatement stmt = null;
+
+        try {
+            stmt = con.prepareStatement("UPDATE imagens SET imagensCOD=?, dado_imagem=? WHERE idimagens=?");
+            stmt.setInt(1, img.getImagensCOD());
+            stmt.setBytes(2, img.getDadoImagem());
+            stmt.setInt(3, img.getIdimagens());
+            stmt.executeUpdate();
+            JOptionPane.showMessageDialog(null, "Imagem atualizada com sucesso!");
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(null, "Erro ao atualizar: " + ex.getMessage());
+        } finally {
+            fecharRecursos(con, stmt, null);
+        }
+    }
+
+    public void delete(Imagem img) {
+        Connection con = ConexaoSQL.getConnection();
+        PreparedStatement stmt = null;
+
+        try {
+            stmt = con.prepareStatement("DELETE FROM imagens WHERE idimagens=?");
+            stmt.setInt(1, img.getIdimagens());
+            stmt.executeUpdate();
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(null, "Erro ao excluir: " + ex.getMessage());
+        } finally {
+            fecharRecursos(con, stmt, null);
+        }
+    }
+
+    public boolean existeId(int id) {
+        Connection con = ConexaoSQL.getConnection();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+
+        try {
+            stmt = con.prepareStatement("SELECT COUNT(*) FROM imagens WHERE idimagens = ?");
+            stmt.setInt(1, id);
+            rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (SQLException ex) {
+            System.err.println("Erro ao verificar ID: " + ex.getMessage());
+        } finally {
+            fecharRecursos(con, stmt, rs);
+        }
+        return false;
+    }
+    
+    /**
+     * ✅ ESSENCIAL PARA O LAZY LOADING
+     * Este método busca os bytes (MEDIUMBLOB) de UMA ÚNICA imagem sob demanda.
+     */
+    public byte[] getImagemBytesById(int id) {
+        String sql = "SELECT dado_imagem FROM imagens WHERE idimagens = ?";
+        Connection conn = null;
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        byte[] dadosImagem = null;
+
+        try {
+            conn = ConexaoSQL.getConnection(); // Usa sua classe de conexão
+            stmt = conn.prepareStatement(sql);
+            stmt.setInt(1, id);
+            
+            rs = stmt.executeQuery();
+            if (rs.next()) {
+                dadosImagem = rs.getBytes("dado_imagem");
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro ao buscar bytes da imagem por ID: " + e.getMessage());
+        } finally {
+            fecharRecursos(conn, stmt, rs); // Usa seu método de fechar
+        }
+        return dadosImagem;
+    }
+
+
+    private void fecharRecursos(Connection con, PreparedStatement stmt, ResultSet rs) {
+        try {
+            if (rs != null) rs.close();
+            if (stmt != null) stmt.close();
+            if (con != null) con.close();
+        } catch (SQLException ex) {
+            System.err.println("Erro ao fechar recursos: " + ex.getMessage());
+        }
+    }
+}
