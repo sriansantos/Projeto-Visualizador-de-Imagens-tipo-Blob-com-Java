@@ -1,0 +1,76 @@
+package javaapplication5;
+
+import java.util.List;
+
+
+public class ClasseOrdenacoes {
+
+    // A CLASSE ContadorTempo FOI REMOVIDA. Ela era a causa do travamento.
+    // Usaremos System.currentTimeMillis() que é a forma correta e simples.
+
+    public static long bubbleSort(List<Imagem> lista) {
+        System.out.println("🔀 Iniciando Bubble Sort...");
+        long inicio = System.currentTimeMillis(); // Começa a contar aqui
+
+        int n = lista.size();
+        for (int i = 0; i < n - 1; i++) {
+            for (int j = 0; j < n - i - 1; j++) {
+                if (lista.get(j).getImagensCOD() > lista.get(j + 1).getImagensCOD()) {
+                    Imagem temp = lista.get(j);
+                    lista.set(j, lista.get(j + 1));
+                    lista.set(j + 1, temp);
+                }
+            }
+        }
+
+        long fim = System.currentTimeMillis(); // Termina de contar aqui
+        long tempo = fim - inicio;
+        System.out.println("✅ Bubble Sort concluído. Tempo: " + tempo + "ms");
+        return tempo;
+    }
+
+    public static long selectionSort(List<Imagem> lista) {
+        System.out.println("🔀 Iniciando Selection Sort...");
+        long inicio = System.currentTimeMillis();
+
+        int n = lista.size();
+        for (int i = 0; i < n - 1; i++) {
+            int menorIndex = i;
+            for (int j = i + 1; j < n; j++) {
+                if (lista.get(j).getImagensCOD() < lista.get(menorIndex).getImagensCOD()) {
+                    menorIndex = j;
+                }
+            }
+            Imagem temp = lista.get(menorIndex);
+            lista.set(menorIndex, lista.get(i));
+            lista.set(i, temp);
+        }
+
+        long fim = System.currentTimeMillis();
+        long tempo = fim - inicio;
+        System.out.println("✅ Selection Sort concluído. Tempo: " + tempo + "ms");
+        return tempo;
+    }
+
+    public static long insertionSort(List<Imagem> lista) {
+        System.out.println("🔀 Iniciando Insertion Sort...");
+        long inicio = System.currentTimeMillis();
+
+        int n = lista.size();
+        for (int i = 1; i < n; i++) {
+            Imagem chave = lista.get(i);
+            int j = i - 1;
+
+            while (j >= 0 && lista.get(j).getImagensCOD() > chave.getImagensCOD()) {
+                lista.set(j + 1, lista.get(j));
+                j--;
+            }
+            lista.set(j + 1, chave);
+        }
+
+        long fim = System.currentTimeMillis();
+        long tempo = fim - inicio;
+        System.out.println("✅ Insertion Sort concluído. Tempo: " + tempo + "ms");
+        return tempo;
+    }
+}
